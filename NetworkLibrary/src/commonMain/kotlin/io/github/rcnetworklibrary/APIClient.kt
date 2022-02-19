@@ -4,9 +4,11 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.encodeToJsonElement
+import kotlin.reflect.KClass
 
 class APIClient(
     val contextPath: String
@@ -86,9 +88,9 @@ class APIClient(
     }
 
     inline fun<reified R, reified E> handleResponse(response: Pair<String, Int>,
-                                                    crossinline onSuccess: (@kotlinx.serialization.Serializable R) -> Unit,
-                                                    crossinline onErrorResponse: (@kotlinx.serialization.Serializable E) -> Unit,
-                                                    crossinline onError: (GenericError) -> Unit){
+                                                          crossinline onSuccess: (@kotlinx.serialization.Serializable R) -> Unit,
+                                                          crossinline onErrorResponse: (@kotlinx.serialization.Serializable E) -> Unit,
+                                                          crossinline onError: (GenericError) -> Unit){
         var responseBody = response.first
         for (item in NetworkManager.apiManager.getResponseInterceptors(contextPath)) {
             responseBody = item.updateResponseBody(responseBody)
@@ -96,8 +98,17 @@ class APIClient(
 
         try {
 
-            val finalResponse : R = jsonParser.decodeFromString(responseBody)
-            onSuccess(finalResponse)
+            when (R::class) {
+                String::class -> {
+                    onSuccess(responseBody as R)
+                }
+                else -> {
+                    val finalResponse : R = jsonParser.decodeFromString(responseBody)
+                    onSuccess(finalResponse)
+                }
+            }
+
+
 
         } catch (error: Throwable) {
 
@@ -113,22 +124,22 @@ class APIClient(
 
     inline fun<reified T> prepareRequest(requestBody: @kotlinx.serialization.Serializable T? = null) : HttpRequestBuilder {
 
-        val requestBuilder = HttpRequestBuilder(){
-            URLBuilder(NetworkManager.apiManager.getCompletePath(contextPath))
-        }
-
-        for (item in NetworkManager.apiManager.getRequestInterceptors(contextPath)){
-            val headerMap = item.getRequestHeaders()
-            for (header in headerMap.keys) {
-                requestBuilder.header(header, headerMap[header])
+        var requestBuilder = HttpRequestBuilder()
+        requestBuilder.url(NetworkManager.apiManager.getCompletePath(contextPath))
+        if (requestBody != null) {
+            when (T::class) {
+                String::class -> {
+                    requestBuilder.body = requestBody
+                }
+                else -> {
+                    requestBuilder.body = jsonParser.encodeToString(requestBody)
+                }
             }
         }
 
-        var body : JsonElement = jsonParser.encodeToJsonElement(requestBody)
         for (item in NetworkManager.apiManager.getRequestInterceptors(contextPath)){
-            body = item.updateRequestBody(body)
+            requestBuilder = item.updateRequest(requestBuilder)
         }
-        requestBuilder.body = body
 
         return requestBuilder
     }

@@ -19,8 +19,7 @@ import kotlinx.serialization.json.encodeToJsonElement
 import kotlin.native.concurrent.ThreadLocal
 
 interface RequestInterceptor {
-    fun getRequestHeaders() : Map<String, String> = HashMap()
-    fun updateRequestBody(requestBody: JsonElement) : JsonElement = requestBody
+    fun updateRequest(request: HttpRequestBuilder) : HttpRequestBuilder = request
 }
 
 interface ResponseInterceptor {
@@ -80,7 +79,13 @@ class CoreNetworkClient : NetworkDispatcher {
         GlobalScope.launch(ApplicationDispatcher) {
 
             try {
+
+                println(request.url.host + request.url.encodedPath + request.url.parameters)
+                println(request.headers.entries().toString())
+
                 val result : HttpResponse = client.request(request)
+                val responseBody : String = result.receive()
+                println(responseBody)
                 if (result.status.value == 401 && tokenHandler != null) {
                     tokenHandler({
                          consumeRequest(request, onSuccess, onError, tokenHandler)
